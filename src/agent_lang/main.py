@@ -6,6 +6,7 @@ import argparse
 import sys
 
 from langchain.messages import HumanMessage
+from pydantic import ValidationError
 
 from agent_lang.chains.agent import build_personal_chef_agent
 from agent_lang.config import ConfigError, load_config, validate_runtime_config
@@ -33,7 +34,7 @@ def main():
             temperature=config.temperature,
             enable_web_search=config.web_search_enabled,
         )
-    except ConfigError as exc:
+    except (ConfigError, ValidationError) as exc:
         raise SystemExit(f"Configuration error: {exc}") from exc
 
     run_config = {"configurable": {"thread_id": args.thread_id}}

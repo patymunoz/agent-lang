@@ -1,58 +1,25 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import os
-from dataclasses import dataclass
 
-
-TRUE_VALUES = {"1", "true", "yes", "on"}
-FALSE_VALUES = {"0", "false", "no", "off"}
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ConfigError(ValueError):
     """Raised when environment-based configuration is invalid."""
 
 
-@dataclass(frozen=True)
-class AppConfig:
-    model_name: str
-    temperature: float
-    web_search_enabled: bool
+class AppConfig(BaseSettings):
+    model_name: str = Field(default="gpt-5-nano", validation_alias="AGENT_MODEL", min_length=1)
+    temperature: float = Field(default=0.7, validation_alias="AGENT_TEMPERATURE", ge=0.0, le=2.0)
+    web_search_enabled: bool = Field(default=True, validation_alias="ENABLE_WEB_SEARCH")
 
-
-def _read_float_env(
-    name: str,
-    default: float,
-    min_value: float | None = None,
-    max_value: float | None = None,
-) -> float:
-    raw_value = os.getenv(name)
-    if raw_value is None or raw_value.strip() == "":
-        return default
-
-    try:
-        parsed_value = float(raw_value)
-    except ValueError as exc:
-        raise ConfigError(f"{name} must be a number. Received: {raw_value!r}") from exc
-
-    if min_value is not None and parsed_value < min_value:
-        raise ConfigError(f"{name} must be >= {min_value}. Received: {parsed_value}")
-    if max_value is not None and parsed_value > max_value:
-        raise ConfigError(f"{name} must be <= {max_value}. Received: {parsed_value}")
-    return parsed_value
-
-
-def _read_bool_env(name: str, default: bool) -> bool:
-    raw_value = os.getenv(name)
-    if raw_value is None or raw_value.strip() == "":
-        return default
-
-    normalized = raw_value.strip().lower()
-    if normalized in TRUE_VALUES:
-        return True
-    if normalized in FALSE_VALUES:
-        return False
-    raise ConfigError(
-        f"{name} must be a boolean value ({sorted(TRUE_VALUES | FALSE_VALUES)}). Received: {raw_value!r}"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
 
@@ -81,16 +48,9 @@ def _required_env_for_model(model_name: str) -> tuple[str, ...]:
     return ()
 
 
+@lru_cache(maxsize=1)
 def load_config() -> AppConfig:
-    model_name = os.getenv("AGENT_MODEL", "gpt-5-nano").strip() or "gpt-5-nano"
-    temperature = _read_float_env("AGENT_TEMPERATURE", default=0.7, min_value=0.0, max_value=2.0)
-    web_search_enabled = _read_bool_env("ENABLE_WEB_SEARCH", default=True)
-
-    return AppConfig(
-        model_name=model_name,
-        temperature=temperature,
-        web_search_enabled=web_search_enabled,
-    )
+    return AppConfig()
 
 
 def validate_runtime_config(config: AppConfig) -> list[str]:
